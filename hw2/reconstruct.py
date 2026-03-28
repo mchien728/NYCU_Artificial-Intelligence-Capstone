@@ -8,6 +8,7 @@ from copy import deepcopy
 from scipy.spatial.transform import Rotation as R
 import time
 
+
 # ---------- Camera Intrinsics (Resolution 512x512, FOV 90) ----------
 # These parameters are derived from the Habitat pinhole camera model [cite: 26-27].
 IMG_W, IMG_H = 512, 512
@@ -81,12 +82,31 @@ def my_local_icp_algorithm(source_pcd, target_pcd, initial_transform):
     TASK 2: Custom ICP Implementation (BONUS 20%) 
     Implement your own version of Point-to-Plane ICP.
     """
-    T_global = initial_transform.copy()
-    
     # TODO: Implement the ICP loop:
     # 1. Find nearest neighbors using target_tree.search_knn_vector_3d
     # 2. Build the linear system (AtA)x = Atb
     # 3. Solve for pose update and update T_global
+
+    T_global = initial_transform.copy()
+
+    target_tree = o3d.geometry.KDTreeFlann(target_pcd)
+
+    source_points = np.asarray(source_pcd.points)
+    target_points = np.asarray(target_pcd.points)
+
+    target_normals = np.asarray(target_pcd.normals)
+
+    iterations = 30
+    for i in range(iterations):
+        A = []
+        b = []
+
+        for p_s in source_points:
+            _, idx, _ = target_tree.search_knn_vector_3d(p_s, 1)
+            p_t = target_points[idx[0]]
+            n_t = target_normals[idx[0]]
+
+            error = np.dot((p_s - p_t), n_t)
     
     result = o3d.pipelines.registration.RegistrationResult()
     result.transformation = T_global
@@ -105,8 +125,6 @@ def local_icp_algorithm(source_down, target_down, trans_init, threshold):
         init=trans_init,
         estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPlane()
     )
-    
-    # return the whole
     return reg_p2l
 
 def visualize_and_evaluate(reconstructed_pcd, predicted_cam_poses, gt_poses, args):
@@ -114,6 +132,7 @@ def visualize_and_evaluate(reconstructed_pcd, predicted_cam_poses, gt_poses, arg
     TASK 3: Evaluation & Visualization [cite: 19, 35-38]
     """
     # 1. Create LineSet for estimated trajectory (Red)
+
     # 2. Create LineSet for ground truth trajectory (Black)
     
     # TODO: Calculate Mean L2 Distance between predicted_cam_poses and gt_poses [cite: 38]
@@ -150,18 +169,61 @@ def reconstruct(args):
     camera_poses = [np.eye(4)]
     accumulated_pcd = o3d.geometry.PointCloud()
 
+    # The first frame
+    rgb = np.asarray(o3d.io.read_image(rgb_files[0]))
+    depth = np.asarray(o3d.io.read_image(depth_files[0]))
+    prev_pcd = depth_image_to_point_cloud(rgb, depth)
+
+    accumulated_pcd += prev_pcd
+
     # Reconstruction Loop [cite: 29-30]
     for i in range(1, len(rgb_files)):
         print(f"Processing Frame {i}...")
-        # TODO: Implement the full pipeline:
         # 1. Convert RGB-D to PointCloud (Task 1)
+        rgb = np.asarray(o3d.io.read_image(rgb_files[i]))
+        depth = np.asarray(o3d.io.read_image(depth_files[i]))
+        cur_pcd = depth_image_to_point_cloud(rgb, depth)
+
         # 2. Preprocess (Voxel/FPFH/Normals)
+        prev_down, prev_fpfh = preprocess_point_cloud(prev_pcd, voxel_size)
+        cur_down, cur_fpfh = preprocess_point_cloud(cur_pcd, voxel_size)
+
         # 3. Execute Global Registration (RANSAC)
+        distance_threshold = voxel_size * 1.5
+        res_ransac = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
+            cur_down, prev_down,
+            cur_fpfh, prev_fpfh,
+            mutual_filter=True,
+            max_correspondence_distance=distance_threshold,
+            estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPoint(False),
+            ransac_n=4,
+            checkers=[
+                o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(distance_threshold)
+            ],
+            criteria=o3d.pipelines.registration.RANSACConvergenceCriteria(400000, 500)
+        )
+
         # 4. Execute Local Registration (ICP - Task 2)
+        res_icp = local_icp_algorithm(
+            cur_down,
+            prev_down,
+            res_ransac.transformation,
+            threshold=voxel_size * 0.5
+        )
+
         # 5. Update camera_poses and accumulate points
+        new_pose = camera_poses[-1] @ np.linalg.inv(res_icp.transformation)
+        camera_poses.append(new_pose)
+
+        cur_pcd.transform(new_pose)
+        accumulated_pcd += cur_pcd
+        prev_pcd = cur_pcd
         pass
 
-    # TODO: Post-processing: remove the ceiling [cite: 37]
+    # Post-processing: remove the ceiling [cite: 37]
+    points = np.asarray(accumulated_pcd.points)
+    mask = points[:, 1] < np.percentile(points[:, 1], 95)
+    accumulated_pcd = accumulated_pcd.select_by_index(np.where(mask)[0])
     
     return accumulated_pcd, camera_poses, gt_poses
 
