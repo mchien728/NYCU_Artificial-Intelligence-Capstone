@@ -23,7 +23,67 @@ class Projection(object):
         """
 
         ### TODO ###
-        return new_pixels
+        # Intrinsic matrix
+        fov_rad = np.deg2rad(fov)
+        
+        f = (self.width/2) / (np.tan(fov_rad/2))
+        
+        u0 = self.width / 2
+        v0 = self.height / 2
+        
+        K = np.array([
+            [f, 0, u0],
+            [0, f, v0],
+            [0, 0, 1]
+        ])
+        
+        # Extrinsic matrix
+        theta_rad = np.deg2rad(theta)
+        
+        R_bev = np.array([
+                [1, 0, 0],
+                [0, np.cos(theta_rad), -np.sin(theta_rad)],
+                [0, np.sin(theta_rad), np.cos(theta_rad)]
+        ])
+        C_bev = np.array([0, 2.5, 0])
+        
+        R_front = np.array([
+                  [1, 0, 0],
+                  [0, 1, 0],
+                  [0, 0, 1]
+        ])
+        C_front = np.array([0, 1, 0])
+        t_front = -R_front @ C_front
+        Ex_front = np.hstack((R_front, t_front.reshape(3, 1)))
+        
+        new_pixels = []
+        
+        for (u, v) in points:
+            # BEV pixels -> 3D ray in camera
+            p = np.array([u, v, 1])
+            ray_camera = np.linalg.inv(K) @ p
+            
+            ray_world = R_bev @ ray_camera
+            
+            if abs(ray_world[1]) < 1e-6:
+                continue
+            
+            lamda = -C_bev[1] / ray_world[1]
+            Xw = C_bev + lamda * ray_world
+
+            Xw_append = np.append(Xw, 1)
+            project = K @ (Ex_front @ Xw_append)
+	    
+            if abs(project[2]) <= 0:
+                continue
+	    	
+            u_new = project[0] / project[2]
+            v_new = project[1] / project[2]
+	    
+            new_pixels.append([int(round(u_new)), int(round(v_new))])
+	    
+        
+        return np.array(new_pixels, dtype=np.int32)
 
     def show_image(self, new_pixels, img_name='projection.png', color=(0, 0, 255), alpha=0.4):
         """
@@ -71,8 +131,8 @@ if __name__ == "__main__":
 
     pitch_ang = -90
 
-    front_rgb = "bev_data/front1.png"
-    top_rgb = "bev_data/bev1.png"
+    front_rgb = "bev_data/front2.png"
+    top_rgb = "bev_data/bev2.png"
 
     # click the pixels on window
     img = cv2.imread(top_rgb, 1)
