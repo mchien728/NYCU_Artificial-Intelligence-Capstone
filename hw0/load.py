@@ -42,6 +42,8 @@ def transform_semantic(semantic_obs):
 def make_simple_cfg(settings):
     sim_cfg = habitat_sim.SimulatorConfiguration()
     sim_cfg.scene_id = settings["scene_id"]
+    # Switch to CPU mode
+    sim_cfg.gpu_device_id = -1
 
     # Define sensors
     sensor_specs = []
@@ -85,7 +87,7 @@ agent = sim.initialize_agent(sim_settings["default_agent"])
 
 # Set initial agent state
 agent_state = habitat_sim.AgentState()
-agent_state.position = np.array([0.0, 0.0, 0.0])
+agent_state.position = np.array([0.0, 0.53, 0.0])
 agent.set_state(agent_state)
 
 # =============================
