@@ -65,7 +65,8 @@ def preprocess_point_cloud(pcd, voxel_size):
     # Estimate normals for pcd_down (required for Point-to-Plane ICP)
     search_radius = voxel_size * 2.0
     pcd_down.estimate_normals(
-        search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=search_radius, max_nn=30))
+        search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=search_radius, max_nn=30)
+    )
     
     # Compute FPFH features for Global Registration [cite: 30]
     radius_feature = voxel_size * 5.0
@@ -95,9 +96,18 @@ def local_icp_algorithm(source_down, target_down, trans_init, threshold):
     """
     TASK 2: Open3D ICP Implementation (REQUIRED) [cite: 32]
     """
-    # TODO: Use o3d.pipelines.registration.registration_icp
+    # Use o3d.pipelines.registration.registration_icp
     # Estimation method should be TransformationEstimationPointToPlane()
-    return None
+    reg_p2l = o3d.pipelines.registration.registration_icp(
+        source=source_down, 
+        target=target_down,
+        max_correspondence_distance=threshold, 
+        init=trans_init,
+        estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPlane()
+    )
+    
+    # return the whole
+    return reg_p2l
 
 def visualize_and_evaluate(reconstructed_pcd, predicted_cam_poses, gt_poses, args):
     """
