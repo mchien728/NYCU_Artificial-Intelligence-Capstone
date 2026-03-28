@@ -35,7 +35,8 @@ def depth_image_to_point_cloud(rgb_image, depth_image):
     v = np.arange(IMG_H)
     uu, vv = np.meshgrid(u, v)
     
-    # Implement unprojection logic here
+    # Implement unprojection logic
+    # Depth = 0 is invalid
     z = depth
     valid = z > 0
 
@@ -43,6 +44,7 @@ def depth_image_to_point_cloud(rgb_image, depth_image):
     y = (vv - CY) * z / FY
     z = -depth
 
+    # shape: (H, W, 3)
     points_3d = np.stack((x, y, z), axis=-1)
     points_3d = points_3d[valid]
 
@@ -60,8 +62,10 @@ def preprocess_point_cloud(pcd, voxel_size):
     """
     pcd_down = pcd.voxel_down_sample(voxel_size)
     
-    # TODO: Estimate normals for pcd_down (required for Point-to-Plane ICP)
-    # pcd_down.estimate_normals(...)
+    # Estimate normals for pcd_down (required for Point-to-Plane ICP)
+    search_radius = voxel_size * 2.0
+    pcd_down.estimate_normals(
+        search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=search_radius, max_nn=30))
     
     # Compute FPFH features for Global Registration [cite: 30]
     radius_feature = voxel_size * 5.0
