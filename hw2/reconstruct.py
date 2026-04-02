@@ -77,12 +77,19 @@ def preprocess_point_cloud(pcd, voxel_size):
     )
     return pcd_down, pcd_fpfh
 
+def cross_product_matrix(v):
+    return np.array([
+        [0, -v[2], v[1]],
+        [v[2], 0, -v[0]],
+        [-v[1], v[0], 0]
+    ])
+
 def my_local_icp_algorithm(source_pcd, target_pcd, initial_transform):
     """
     TASK 2: Custom ICP Implementation (BONUS 20%) 
     Implement your own version of Point-to-Plane ICP.
     """
-    # TODO: Implement the ICP loop:
+    # Implement the ICP loop:
     # 1. Find nearest neighbors using target_tree.search_knn_vector_3d
     # 2. Build the linear system (AtA)x = Atb
     # 3. Solve for pose update and update T_global
@@ -96,17 +103,41 @@ def my_local_icp_algorithm(source_pcd, target_pcd, initial_transform):
 
     target_normals = np.asarray(target_pcd.normals)
 
-    iterations = 30
-    for i in range(iterations):
+    iterations = 20
+    for _ in range(iterations):
         A = []
         b = []
 
-        for p_s in source_points:
+        for i in range(len(source_points)):
+            p_s = source_points[i]
+            
             _, idx, _ = target_tree.search_knn_vector_3d(p_s, 1)
             p_t = target_points[idx[0]]
             n_t = target_normals[idx[0]]
-
             error = np.dot((p_s - p_t), n_t)
+
+            J_rotate = np.cross(p_s, n_t)
+            J_transit = n_t
+            J = np.hstack((J_rotate, J_transit))
+
+            A.append(J)
+            b.append(-error)
+
+        A = np.array(A)
+        b = np.array(b)
+        delta_x = np.linalg.lstsq(A, b, rcond=None)[0]
+        delta_theta = delta_x[: 3]
+        delta_t = delta_x[3: ]
+
+        R = np.eye(3) + cross_product_matrix(delta_theta)
+
+        T_update = np.eye(4)
+        T_update[:3, :3] = R
+        T_update[3:, 3] = delta_t
+
+        T_global = T_update @ T_global
+
+
     
     result = o3d.pipelines.registration.RegistrationResult()
     result.transformation = T_global
