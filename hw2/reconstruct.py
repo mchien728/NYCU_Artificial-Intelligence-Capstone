@@ -10,7 +10,7 @@ import time
 
 
 # ---------- Camera Intrinsics (Resolution 512x512, FOV 90) ----------
-# These parameters are derived from the Habitat pinhole camera model [cite: 26-27].
+# These parameters are derived from the Habitat pinhole camera model.
 IMG_W, IMG_H = 512, 512
 FOV = np.deg2rad(90.0)
 FX = (IMG_W / 2.0) / np.tan(FOV / 2.0)
@@ -154,7 +154,7 @@ def reconstruct(args):
     rgb_files = sorted(glob.glob(os.path.join(rgb_dir, "*.png")))
     depth_files = sorted(glob.glob(os.path.join(depth_dir, "*.png")))
     
-    # Load Ground Truth Poses [cite: 24, 54]
+    # Load Ground Truth Poses
     gt_pose_path = os.path.join(args.data_root, "GT_pose.npy")
     gt_poses = []
     if os.path.exists(gt_pose_path):
@@ -176,7 +176,7 @@ def reconstruct(args):
 
     accumulated_pcd += prev_pcd
 
-    # Reconstruction Loop [cite: 29-30]
+    # Reconstruction Loop
     for i in range(1, len(rgb_files)):
         print(f"Processing Frame {i}...")
         # 1. Convert RGB-D to PointCloud (Task 1)
@@ -220,7 +220,7 @@ def reconstruct(args):
         prev_pcd = cur_pcd
         pass
 
-    # Post-processing: remove the ceiling [cite: 37]
+    # Post-processing: remove the ceiling
     points = np.asarray(accumulated_pcd.points)
     mask = points[:, 1] < np.percentile(points[:, 1], 95)
     accumulated_pcd = accumulated_pcd.select_by_index(np.where(mask)[0])
