@@ -111,6 +111,7 @@ def my_local_icp_algorithm(source_pcd, target_pcd, initial_transform):
         for i in range(len(source_points)):
             p_s = source_points[i]
             
+            # Find the nearest neighbor
             _, idx, _ = target_tree.search_knn_vector_3d(p_s, 1)
             p_t = target_points[idx[0]]
             n_t = target_normals[idx[0]]
@@ -125,6 +126,7 @@ def my_local_icp_algorithm(source_pcd, target_pcd, initial_transform):
 
         A = np.array(A)
         b = np.array(b)
+        # Solve Ax = b and get x
         delta_x = np.linalg.lstsq(A, b, rcond=None)[0]
         delta_theta = delta_x[: 3]
         delta_t = delta_x[3: ]
@@ -137,8 +139,14 @@ def my_local_icp_algorithm(source_pcd, target_pcd, initial_transform):
 
         T_global = T_update @ T_global
 
+        ones = np.ones((source_points.shape[0], 1))
+        homo = np.hstack((source_points, ones))
 
-    
+        source_points = (T_update @ homo.T).T[:, :3]
+
+        if np.linalg.norm(delta_x) < 1e-6:
+            break
+
     result = o3d.pipelines.registration.RegistrationResult()
     result.transformation = T_global
     return result
