@@ -168,15 +168,30 @@ def local_icp_algorithm(source_down, target_down, trans_init, threshold):
 
 def visualize_and_evaluate(reconstructed_pcd, predicted_cam_poses, gt_poses, args):
     """
-    TASK 3: Evaluation & Visualization [cite: 19, 35-38]
+    TASK 3: Evaluation & Visualization
     """
+    pred_points = np.array([pose[:3, 3] for pose in predicted_cam_poses])
+    gt_points = np.array([pose[:3, 3] for pose in gt_poses])
+
+    lines = [[i, i+1] for i in range(len(pred_points)-1)]
+
     # 1. Create LineSet for estimated trajectory (Red)
+    pred_lineset = o3d.geometry.Lineset()
+    pred_lineset.points = o3d.utility.Vector3dVector(pred_points)
+    pred_lineset.lines = o3d.utility.Vector2iVector(lines)
+    pred_lineset.colors = o3d.utility.Vector3dVector([1, 0, 0] for _ in lines)
 
     # 2. Create LineSet for ground truth trajectory (Black)
-    
-    # TODO: Calculate Mean L2 Distance between predicted_cam_poses and gt_poses [cite: 38]
+    # ASK: why the same lines
+    gt_lineset = o3d.geometry.Lineset()
+    gt_lineset.points = o3d.utility.Vector3dVector(gt_points)
+    gt_lineset.lines = o3d.utility.Vector2iVector(lines)
+    gt_lineset.colors = o3d.utility.Vector3dVector([0, 0, 0] for _ in lines)
+
+    # Calculate Mean L2 Distance between predicted_cam_poses and gt_poses
     # L2 = sqrt(dx^2 + dy^2 + dz^2)
-    mean_l2_error = 0.0 
+    errors = np.linalg.norm(pred_points - gt_points, axis=1)
+    mean_l2_error = np.mean(errors)
     
     print(f"Mean L2 distance: {mean_l2_error:.6f} meters")
     
