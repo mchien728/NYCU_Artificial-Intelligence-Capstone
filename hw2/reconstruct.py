@@ -53,7 +53,7 @@ def depth_image_to_point_cloud(rgb_image, depth_image):
     colors_norm = colors_norm[valid]
 
     pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(points_3d)
+    pcd.points = o3d.utility.Vector3dVector(points_3d)  # N x 3
     pcd.colors = o3d.utility.Vector3dVector(colors_norm)
     return pcd
 
@@ -182,7 +182,6 @@ def visualize_and_evaluate(reconstructed_pcd, predicted_cam_poses, gt_poses, arg
     pred_lineset.colors = o3d.utility.Vector3dVector([1, 0, 0] for _ in lines)
 
     # 2. Create LineSet for ground truth trajectory (Black)
-    # ASK: why the same lines
     gt_lineset = o3d.geometry.Lineset()
     gt_lineset.points = o3d.utility.Vector3dVector(gt_points)
     gt_lineset.lines = o3d.utility.Vector2iVector(lines)
