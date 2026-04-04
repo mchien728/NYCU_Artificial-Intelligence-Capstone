@@ -53,6 +53,7 @@ def make_simple_cfg(settings):
     sim_cfg.scene_id = settings["scene"]
     # agent
     agent_cfg = habitat_sim.agent.AgentConfiguration()
+    sim_cfg.gpu_device_id = -1
 
     # In the 1st example, we attach only one sensor,
     # a RGB visual sensor, to the agent
