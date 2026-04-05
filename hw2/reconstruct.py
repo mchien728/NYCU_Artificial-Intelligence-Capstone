@@ -16,6 +16,8 @@ FOV = np.deg2rad(90.0)
 FX = (IMG_W / 2.0) / np.tan(FOV / 2.0)
 FY = (IMG_H / 2.0) / np.tan(FOV / 2.0)
 CX, CY = IMG_W / 2.0, IMG_H / 2.0
+
+# Habitat uses imgs / 10 * 255
 DEPTH_SCALE = 1000.0
 
 def depth_image_to_point_cloud(rgb_image, depth_image):
@@ -25,11 +27,10 @@ def depth_image_to_point_cloud(rgb_image, depth_image):
     """
     # 1. Convert inputs to numpy arrays
     rgb = np.asarray(rgb_image)
-    depth = np.asarray(depth_image)
+    depth = np.asarray(depth_image).astype(np.float32)
 
     # 2. Convert depth to meters (Habitat depth is often scaled or normalized)
-    # ASK: what is the original unit
-    depth = depth / DEPTH_SCALE
+    depth = (depth * 10.0) / 255.0
     
     # 3. Create a coordinate grid for (u, v) pixels
     u = np.arange(IMG_W)
@@ -39,10 +40,10 @@ def depth_image_to_point_cloud(rgb_image, depth_image):
     # Implement unprojection logic
     # Depth = 0 is invalid
     z = depth
-    valid = z > 0
+    valid = (z > 0.1) & (z < 9.9)
 
     x = (uu - CX) * z / FX
-    y = (vv - CY) * z / FY
+    y = -(vv - CY) * z / FY
     z = -depth
 
     # shape: (H, W, 3)
@@ -69,7 +70,8 @@ def preprocess_point_cloud(pcd, voxel_size):
         search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=search_radius, max_nn=30)
     )
     
-    # Compute FPFH features for Global Registration [cite: 30]
+    # Compute FPFH features for Global Registration
+    # radius_feature = voxel_size * 5.0
     radius_feature = voxel_size * 5.0
     pcd_fpfh = o3d.pipelines.registration.compute_fpfh_feature(
         pcd_down,
@@ -128,14 +130,14 @@ def my_local_icp_algorithm(source_pcd, target_pcd, initial_transform):
         b = np.array(b)
         # Solve Ax = b and get x
         delta_x = np.linalg.lstsq(A, b, rcond=None)[0]
-        delta_theta = delta_x[: 3]
-        delta_t = delta_x[3: ]
+        delta_theta = delta_x[:3]
+        delta_t = delta_x[3:]
 
         R = np.eye(3) + cross_product_matrix(delta_theta)
 
         T_update = np.eye(4)
         T_update[:3, :3] = R
-        T_update[3:, 3] = delta_t
+        T_update[:3, 3] = delta_t
 
         T_global = T_update @ T_global
 
@@ -153,7 +155,7 @@ def my_local_icp_algorithm(source_pcd, target_pcd, initial_transform):
 
 def local_icp_algorithm(source_down, target_down, trans_init, threshold):
     """
-    TASK 2: Open3D ICP Implementation (REQUIRED) [cite: 32]
+    TASK 2: Open3D ICP Implementation (REQUIRED)
     """
     # Use o3d.pipelines.registration.registration_icp
     # Estimation method should be TransformationEstimationPointToPlane()
@@ -176,13 +178,13 @@ def visualize_and_evaluate(reconstructed_pcd, predicted_cam_poses, gt_poses, arg
     lines = [[i, i+1] for i in range(len(pred_points)-1)]
 
     # 1. Create LineSet for estimated trajectory (Red)
-    pred_lineset = o3d.geometry.Lineset()
+    pred_lineset = o3d.geometry.LineSet()
     pred_lineset.points = o3d.utility.Vector3dVector(pred_points)
     pred_lineset.lines = o3d.utility.Vector2iVector(lines)
     pred_lineset.colors = o3d.utility.Vector3dVector([1, 0, 0] for _ in lines)
 
     # 2. Create LineSet for ground truth trajectory (Black)
-    gt_lineset = o3d.geometry.Lineset()
+    gt_lineset = o3d.geometry.LineSet()
     gt_lineset.points = o3d.utility.Vector3dVector(gt_points)
     gt_lineset.lines = o3d.utility.Vector2iVector(lines)
     gt_lineset.colors = o3d.utility.Vector3dVector([0, 0, 0] for _ in lines)
@@ -200,12 +202,14 @@ def visualize_and_evaluate(reconstructed_pcd, predicted_cam_poses, gt_poses, arg
     return mean_l2_error
 
 def reconstruct(args):
-    voxel_size = 0.25 
+    voxel_size = 0.1
     rgb_dir = os.path.join(args.data_root, "rgb")
     depth_dir = os.path.join(args.data_root, "depth")
 
-    rgb_files = sorted(glob.glob(os.path.join(rgb_dir, "*.png")))
-    depth_files = sorted(glob.glob(os.path.join(depth_dir, "*.png")))
+    rgb_files = sorted(glob.glob(os.path.join(rgb_dir, "*.png")), 
+                       key=lambda x: int(os.path.splitext(os.path.basename(x))[0]))
+    depth_files = sorted(glob.glob(os.path.join(depth_dir, "*.png")),
+                         key=lambda x: int(os.path.splitext(os.path.basename(x))[0]))
     
     # Load Ground Truth Poses
     gt_pose_path = os.path.join(args.data_root, "GT_pose.npy")
@@ -228,7 +232,9 @@ def reconstruct(args):
     prev_pcd = depth_image_to_point_cloud(rgb, depth)
 
     accumulated_pcd += prev_pcd
+    prev_down, prev_fpfh = preprocess_point_cloud(prev_pcd, voxel_size)
 
+    recent_pcds = []
     # Reconstruction Loop
     for i in range(1, len(rgb_files)):
         print(f"Processing Frame {i}...")
@@ -238,7 +244,6 @@ def reconstruct(args):
         cur_pcd = depth_image_to_point_cloud(rgb, depth)
 
         # 2. Preprocess (Voxel/FPFH/Normals)
-        prev_down, prev_fpfh = preprocess_point_cloud(prev_pcd, voxel_size)
         cur_down, cur_fpfh = preprocess_point_cloud(cur_pcd, voxel_size)
 
         # 3. Execute Global Registration (RANSAC)
@@ -256,22 +261,85 @@ def reconstruct(args):
             criteria=o3d.pipelines.registration.RANSACConvergenceCriteria(400000, 500)
         )
 
+        T_ran = res_ransac.transformation.copy()
+        angle = np.linalg.norm(R.from_matrix(T_ran[:3,:3]).as_rotvec())
+        angle_deg = np.degrees(angle)
+        print(f"Frame {i} RANSAC rotation (deg): {np.degrees(angle):.4f}")
+
         # 4. Execute Local Registration (ICP - Task 2)
-        res_icp = local_icp_algorithm(
-            cur_down,
-            prev_down,
-            res_ransac.transformation,
-            threshold=voxel_size * 0.5
-        )
+        local_map = o3d.geometry.PointCloud()
+        for p in recent_pcds:
+            local_map += p
+
+        if len(accumulated_pcd.points) < 500:
+            print("Warm-up phase, use RANSAC only")
+            T_trans = np.linalg.inv(res_ransac.transformation)
+        else:
+            # prepare local_map
+            local_map = accumulated_pcd.voxel_down_sample(voxel_size)
+            local_map.estimate_normals(
+                o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size*2, max_nn=30)
+            )
+
+            if args.version == "my_icp":
+                res_icp = my_local_icp_algorithm(cur_down, local_map, res_ransac.transformation)
+            else:
+                res_icp = local_icp_algorithm(
+                    cur_down,
+                    local_map,
+                    res_ransac.transformation,
+                    threshold=voxel_size * 0.4
+                )
+
+        T_icp = res_icp.transformation.copy()
+        angle = np.linalg.norm(R.from_matrix(T_icp[:3,:3]).as_rotvec())
+        angle_deg = np.degrees(angle)
+        print(f"Frame {i} ICP rotation (deg): {np.degrees(angle):.4f}")
+
+        print(f"Frame {i} RANSAC fitness: {res_ransac.fitness:.4f}, ICP fitness: {res_icp.fitness:.4f}")
+        print(f"Frame {i} RANSAC inlier: {res_ransac.inlier_rmse:.4f}, ICP inlier: {res_icp.inlier_rmse:.4f}")
+        
+        if res_ransac.fitness < 0.5 or res_ransac.inlier_rmse > 0.05:
+            print(f"Frame {i} RANSAC too poor, fallback to previous pose")
+            # fallback: use previous pose without updating
+            T_trans = np.eye(4)
+        else:
+            # ICP refinement
+            T_icp = res_icp.transformation.copy()
+            angle_deg = np.degrees(np.linalg.norm(R.from_matrix(T_icp[:3,:3]).as_rotvec()))
+            if angle_deg > 10 or res_icp.fitness < 0.65:
+                print(f"Frame {i} ICP failed, fallback to RANSAC")
+                T_trans = np.linalg.inv(res_ransac.transformation)
+            else:
+                T_trans = np.linalg.inv(T_icp)
 
         # 5. Update camera_poses and accumulate points
-        new_pose = camera_poses[-1] @ np.linalg.inv(res_icp.transformation)
+        new_pose = camera_poses[-1] @ T_trans
         camera_poses.append(new_pose)
 
-        cur_pcd.transform(new_pose)
-        accumulated_pcd += cur_pcd
-        prev_pcd = cur_pcd
-        pass
+        R_global = np.array(new_pose[:3, :3])
+        angle_global = np.degrees(
+            np.linalg.norm(R.from_matrix(R_global).as_rotvec())
+        )
+        print(f"Frame {i} GLOBAL rotation (deg): {angle_global:.4f}")
+
+        if res_icp.fitness > 0.7:
+            temp_pcd = deepcopy(cur_pcd)
+            temp_pcd.transform(new_pose)
+
+            recent_pcds.append(temp_pcd)
+            if len(recent_pcds) > 5:
+                recent_pcds.pop(0)
+
+            accumulated_pcd += temp_pcd
+
+            if i % 10 == 0:
+                accumulated_pcd = accumulated_pcd.voxel_down_sample(voxel_size=0.03)
+
+        prev_down, prev_fpfh = cur_down, cur_fpfh
+
+    accumulated_pcd = accumulated_pcd.voxel_down_sample(voxel_size=0.02)
+    accumulated_pcd, _ = accumulated_pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
 
     # Post-processing: remove the ceiling
     points = np.asarray(accumulated_pcd.points)
