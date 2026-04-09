@@ -223,7 +223,7 @@ def reconstruct(args):
         # 1. Convert RGB-D to PointCloud (Task 1)
         pcd_prev = depth_image_to_point_cloud(rgb_prev, dep_prev)
         pcd_cur = depth_image_to_point_cloud(rgb_cur, dep_cur)
-        
+
         if i == 1 and len(pcd_prev.points) > 0:
             pcd_prev_world = deepcopy(pcd_prev)
             pcd_prev_world.transform(camera_poses[0])
@@ -303,6 +303,6 @@ if __name__ == '__main__':
     start_time = time.time()
     result_pcd, pred_poses, gt_poses = reconstruct(args)
     
-    print(f"Total execution time: {time.time() - start_time:.2f}s") # 
+    print(f"Total execution time: {time.time() - start_time:.2f}s")
     visualize_and_evaluate(result_pcd, pred_poses, gt_poses, args)
 
