@@ -237,8 +237,8 @@ def reconstruct(args):
         cur_down, _ = preprocess_point_cloud(pcd_cur, voxel_size)
 
         coarse_voxel_size = voxel_size * 2.0
-        cur_global_down, cur_global_fpfh = preprocess_point_cloud(pcd_cur, coarse_voxel_size)
         prev_global_down, prev_global_fpfh = preprocess_point_cloud(pcd_prev, coarse_voxel_size)
+        cur_global_down, cur_global_fpfh = preprocess_point_cloud(pcd_cur, coarse_voxel_size)
 
         # 3. Execute Global Registration (RANSAC)
         distance_threshold = coarse_voxel_size * 1.5
