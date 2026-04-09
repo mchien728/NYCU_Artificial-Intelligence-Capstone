@@ -22,7 +22,7 @@ python load.py
 
 ## Phase 2: 3D Reconstruction
 Switch to the reconstruction environment before running the following commands.  
-⚠️ Requirements:
+⚠️ Requirements:  
 open3d  
 numpy==1.26.4
 
