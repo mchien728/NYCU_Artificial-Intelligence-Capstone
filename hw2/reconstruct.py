@@ -8,9 +8,8 @@ from copy import deepcopy
 from scipy.spatial.transform import Rotation as R
 import time
 
-
 # ---------- Camera Intrinsics (Resolution 512x512, FOV 90) ----------
-# These parameters are derived from the Habitat pinhole camera model.
+# These parameters are derived from the Habitat pinhole camera model [cite: 26-27].
 IMG_W, IMG_H = 512, 512
 FOV = np.deg2rad(90.0)
 FX = (IMG_W / 2.0) / np.tan(FOV / 2.0)
@@ -59,7 +58,7 @@ def depth_image_to_point_cloud(rgb_image, depth_image):
     return pcd
 
 def preprocess_point_cloud(pcd, voxel_size):
-    """
+    """"
     Pre-processing: Voxelization and Normal Estimation [cite: 17, 29]
     """
     pcd_down = pcd.voxel_down_sample(voxel_size)
@@ -79,133 +78,122 @@ def preprocess_point_cloud(pcd, voxel_size):
     )
     return pcd_down, pcd_fpfh
 
-def cross_product_matrix(v):
-    return np.array([
-        [0, -v[2], v[1]],
-        [v[2], 0, -v[0]],
-        [-v[1], v[0], 0]
-    ])
-
 def my_local_icp_algorithm(source_pcd, target_pcd, initial_transform):
     """
     TASK 2: Custom ICP Implementation (BONUS 20%) 
     Implement your own version of Point-to-Plane ICP.
     """
-    # Implement the ICP loop:
+    T_global = initial_transform.copy()
+    
+    # TODO: Implement the ICP loop:
     # 1. Find nearest neighbors using target_tree.search_knn_vector_3d
     # 2. Build the linear system (AtA)x = Atb
     # 3. Solve for pose update and update T_global
-
-    T_global = initial_transform.copy()
-
-    target_tree = o3d.geometry.KDTreeFlann(target_pcd)
-
-    source_points = np.asarray(source_pcd.points)
-    target_points = np.asarray(target_pcd.points)
-
-    target_normals = np.asarray(target_pcd.normals)
-
-    iterations = 20
-    for _ in range(iterations):
-        A = []
-        b = []
-
-        for i in range(len(source_points)):
-            p_s = source_points[i]
-            
-            # Find the nearest neighbor
-            _, idx, _ = target_tree.search_knn_vector_3d(p_s, 1)
-            p_t = target_points[idx[0]]
-            n_t = target_normals[idx[0]]
-            error = np.dot((p_s - p_t), n_t)
-
-            J_rotate = np.cross(p_s, n_t)
-            J_transit = n_t
-            J = np.hstack((J_rotate, J_transit))
-
-            A.append(J)
-            b.append(-error)
-
-        A = np.array(A)
-        b = np.array(b)
-        # Solve Ax = b and get x
-        delta_x = np.linalg.lstsq(A, b, rcond=None)[0]
-        delta_theta = delta_x[:3]
-        delta_t = delta_x[3:]
-
-        R = np.eye(3) + cross_product_matrix(delta_theta)
-
-        T_update = np.eye(4)
-        T_update[:3, :3] = R
-        T_update[:3, 3] = delta_t
-
-        T_global = T_update @ T_global
-
-        ones = np.ones((source_points.shape[0], 1))
-        homo = np.hstack((source_points, ones))
-
-        source_points = (T_update @ homo.T).T[:, :3]
-
-        if np.linalg.norm(delta_x) < 1e-6:
-            break
-
-    result = o3d.pipelines.registration.RegistrationResult()
-    result.transformation = T_global
-    return result
-
+    
 def local_icp_algorithm(source_down, target_down, trans_init, threshold):
     """
-    TASK 2: Open3D ICP Implementation (REQUIRED)
+    TASK 2: Open3D ICP Implementation (REQUIRED) [cite: 32]
     """
     # Use o3d.pipelines.registration.registration_icp
     # Estimation method should be TransformationEstimationPointToPlane()
-    reg_p2l = o3d.pipelines.registration.registration_icp(
-        source=source_down, 
+    res_coarse = o3d.pipelines.registration.registration_icp(
+        source=source_down,
         target=target_down,
-        max_correspondence_distance=threshold, 
+        max_correspondence_distance=threshold * 2.0,
         init=trans_init,
-        estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPlane()
+        estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPoint(),
+        criteria=o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=35),
     )
-    return reg_p2l
+    res_ransac = o3d.pipelines.registration.registration_icp(
+        source=source_down,
+        target=target_down,
+        max_correspondence_distance=threshold,
+        init=res_coarse.transformation,
+        estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPlane(),
+        criteria=o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=70),
+    )
+    return res_ransac
 
 def visualize_and_evaluate(reconstructed_pcd, predicted_cam_poses, gt_poses, args):
     """
     TASK 3: Evaluation & Visualization
     """
-    pred_points = np.array([pose[:3, 3] for pose in predicted_cam_poses])
-    gt_points = np.array([pose[:3, 3] for pose in gt_poses])
-
-    lines = [[i, i+1] for i in range(len(pred_points)-1)]
+    # extract camera positions
+    pred_pos = np.array([pose[:3, 3] for pose in predicted_cam_poses]) 
+    gt_pos = np.array([pose[:3, 3] for pose in gt_poses])
 
     # 1. Create LineSet for estimated trajectory (Red)
+    pred_lines = [[i, i+1] for i in range(len(pred_pos) - 1)]
     pred_lineset = o3d.geometry.LineSet()
-    pred_lineset.points = o3d.utility.Vector3dVector(pred_points)
-    pred_lineset.lines = o3d.utility.Vector2iVector(lines)
-    pred_lineset.colors = o3d.utility.Vector3dVector([1, 0, 0] for _ in lines)
-
+    pred_lineset.points = o3d.utility.Vector3dVector(pred_pos)
+    pred_lineset.lines  = o3d.utility.Vector2iVector(pred_lines)
+    pred_lineset.colors = o3d.utility.Vector3dVector([[1, 0, 0] for _ in pred_lines])
+    
     # 2. Create LineSet for ground truth trajectory (Black)
+    gt_lines = [[i, i+1] for i in range(len(gt_pos) - 1)]
     gt_lineset = o3d.geometry.LineSet()
-    gt_lineset.points = o3d.utility.Vector3dVector(gt_points)
-    gt_lineset.lines = o3d.utility.Vector2iVector(lines)
-    gt_lineset.colors = o3d.utility.Vector3dVector([0, 0, 0] for _ in lines)
-
-    # Calculate Mean L2 Distance between predicted_cam_poses and gt_poses
+    gt_lineset.points = o3d.utility.Vector3dVector(gt_pos)
+    gt_lineset.lines  = o3d.utility.Vector2iVector(gt_lines)
+    gt_lineset.colors = o3d.utility.Vector3dVector([[0, 0, 0] for _ in gt_lines]) # Black
+    
+    # Calculate Mean L2 Distance between predicted_cam_poses and gt_poses [cite: 38]
     # L2 = sqrt(dx^2 + dy^2 + dz^2)
-    errors = np.linalg.norm(pred_points - gt_points, axis=1)
-    mean_l2_error = np.mean(errors)
-    
-    print(f"Mean L2 distance: {mean_l2_error:.6f} meters")
-    
+    min_len = min(len(pred_pos), len(gt_pos))
+    pred_valid = pred_pos[:min_len]
+    gt_valid = gt_pos[:min_len]
+
+    mean_l2_error = np.nan
+    if min_len > 1:
+        gt_center = np.mean(gt_valid, axis=0)
+        pred_center = np.mean(pred_valid, axis=0)
+        gt_zero = gt_valid - gt_center
+        pred_zero = pred_valid - pred_center
+
+        # SVD
+        H = gt_zero.T @ pred_zero
+        U, _, Vt = np.linalg.svd(H)
+        R_align = Vt.T @ U.T
+        if np.linalg.det(R_align) < 0:
+            Vt[-1, :] *= -1
+            R_align = Vt.T @ U.T
+        t_align = pred_center - R_align @ gt_center
+
+        gt_pos = (R_align @ gt_pos.T).T + t_align
+        gt_lineset.points = o3d.utility.Vector3dVector(gt_pos)
+
+        l2_dis = np.linalg.norm(pred_valid - gt_valid, axis=1)
+        mean_l2_error = float(np.mean(l2_dis))
+        print(f"Mean L2 distance: {mean_l2_error:.6f} meters")
+
     # 3. Visualization
-    o3d.visualization.draw_geometries([reconstructed_pcd], 
-                                      window_name=f"Floor {args.floor} Reconstruction")
+    o3d.visualization.draw_geometries([reconstructed_pcd, pred_lineset, gt_lineset], 
+                                  window_name=f"Floor {args.floor} Reconstruction")
+    
     return mean_l2_error
+
+def remove_ceiling_simple(accumulated_pcd, floor=1):
+    points = np.asarray(accumulated_pcd.points)
+    colors = np.asarray(accumulated_pcd.colors)
+
+    if len(points) == 0:
+        print("Warning: Point cloud is empty.")
+        return accumulated_pcd
+
+    ceiling_threshold = 0.6 if floor == 1 else 3.0
+
+    mask = np.isfinite(points).all(axis=1) & (points[:, 1] < ceiling_threshold)
+    filtered_pcd = o3d.geometry.PointCloud()
+    filtered_pcd.points = o3d.utility.Vector3dVector(points[mask])
+    filtered_pcd.colors = o3d.utility.Vector3dVector(colors[mask])
+
+    return filtered_pcd
 
 def reconstruct(args):
     voxel_size = 0.1
     rgb_dir = os.path.join(args.data_root, "rgb")
     depth_dir = os.path.join(args.data_root, "depth")
 
+    # Sort by file number
     rgb_files = sorted(glob.glob(os.path.join(rgb_dir, "*.png")), 
                        key=lambda x: int(os.path.splitext(os.path.basename(x))[0]))
     depth_files = sorted(glob.glob(os.path.join(depth_dir, "*.png")),
@@ -226,125 +214,87 @@ def reconstruct(args):
     camera_poses = [np.eye(4)]
     accumulated_pcd = o3d.geometry.PointCloud()
 
-    # The first frame
-    rgb = np.asarray(o3d.io.read_image(rgb_files[0]))
-    depth = np.asarray(o3d.io.read_image(depth_files[0]))
-    prev_pcd = depth_image_to_point_cloud(rgb, depth)
-
-    accumulated_pcd += prev_pcd
-    prev_down, prev_fpfh = preprocess_point_cloud(prev_pcd, voxel_size)
-
-    recent_pcds = []
     # Reconstruction Loop
     for i in range(1, len(rgb_files)):
         print(f"Processing Frame {i}...")
+
+        rgb_prev  = np.asarray(o3d.io.read_image(rgb_files[i-1]))
+        dep_prev  = np.asarray(o3d.io.read_image(depth_files[i-1]))
+        rgb_cur   = np.asarray(o3d.io.read_image(rgb_files[i]))
+        dep_cur   = np.asarray(o3d.io.read_image(depth_files[i]))
+        # Depth loaded as (H, W, 3), take one channel
+        if dep_prev.ndim == 3:
+            dep_prev = dep_prev[:, :, 0]
+        if dep_cur.ndim == 3:
+            dep_cur = dep_cur[:, :, 0]
+
         # 1. Convert RGB-D to PointCloud (Task 1)
-        rgb = np.asarray(o3d.io.read_image(rgb_files[i]))
-        depth = np.asarray(o3d.io.read_image(depth_files[i]))
-        cur_pcd = depth_image_to_point_cloud(rgb, depth)
+        pcd_prev = depth_image_to_point_cloud(rgb_prev, dep_prev)
+        pcd_cur = depth_image_to_point_cloud(rgb_cur, dep_cur)
+        if i == 1 and len(pcd_prev.points) > 0:
+            pcd_prev_world = deepcopy(pcd_prev)
+            pcd_prev_world.transform(camera_poses[0])
+            accumulated_pcd += pcd_prev_world
 
         # 2. Preprocess (Voxel/FPFH/Normals)
-        cur_down, cur_fpfh = preprocess_point_cloud(cur_pcd, voxel_size)
+        prev_down, _ = preprocess_point_cloud(pcd_prev, voxel_size)
+        cur_down, _ = preprocess_point_cloud(pcd_cur, voxel_size)
+
+        coarse_voxel_size = voxel_size * 2.0
+        cur_global_down, cur_global_fpfh = preprocess_point_cloud(pcd_cur, coarse_voxel_size)
+        prev_global_down, prev_global_fpfh = preprocess_point_cloud(pcd_prev, coarse_voxel_size)
 
         # 3. Execute Global Registration (RANSAC)
-        distance_threshold = voxel_size * 1.5
-        res_ransac = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
-            cur_down, prev_down,
-            cur_fpfh, prev_fpfh,
-            mutual_filter=True,
-            max_correspondence_distance=distance_threshold,
-            estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPoint(False),
-            ransac_n=4,
-            checkers=[
-                o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(distance_threshold)
-            ],
-            criteria=o3d.pipelines.registration.RANSACConvergenceCriteria(400000, 500)
-        )
+        distance_threshold = coarse_voxel_size * 1.5
+        trans_init = np.eye(4)
+        if len(camera_poses) >= 2:
+            trans_init = np.linalg.inv(camera_poses[-2]) @ camera_poses[-1]
 
-        T_ran = res_ransac.transformation.copy()
-        angle = np.linalg.norm(R.from_matrix(T_ran[:3,:3]).as_rotvec())
-        angle_deg = np.degrees(angle)
-        print(f"Frame {i} RANSAC rotation (deg): {np.degrees(angle):.4f}")
+        if len(cur_global_down.points) < 50 or len(prev_global_down.points) < 50:
+            res_ransac = o3d.pipelines.registration.RegistrationResult()
+            res_ransac.transformation = np.eye(4)
+            res_ransac.fitness = 0.0
+        else:    
+            ransac_result = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
+                cur_global_down, prev_global_down,
+                cur_global_fpfh, prev_global_fpfh,
+                mutual_filter=False,
+                max_correspondence_distance=distance_threshold,
+                estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPoint(False),
+                ransac_n=4,
+                checkers=[
+                    o3d.pipelines.registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
+                    o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(distance_threshold),
+                ],
+                criteria=o3d.pipelines.registration.RANSACConvergenceCriteria(40000, 500)
+            )
+            # Performance of RANSAC is too bad
+            if ransac_result.fitness > 0.15 and np.linalg.norm(ransac_result.transformation[:3, 3]) < 1.0:
+                trans_init = ransac_result.transformation
 
         # 4. Execute Local Registration (ICP - Task 2)
-        local_map = o3d.geometry.PointCloud()
-        for p in recent_pcds:
-            local_map += p
-
-        if len(accumulated_pcd.points) < 500:
-            print("Warm-up phase, use RANSAC only")
-            T_trans = np.linalg.inv(res_ransac.transformation)
+        icp_max_dis = voxel_size * 1.5
+        if args.version == 'open3d':
+            icp_result = local_icp_algorithm(cur_down, prev_down, trans_init, icp_max_dis)
         else:
-            # prepare local_map
-            local_map = accumulated_pcd.voxel_down_sample(voxel_size)
-            local_map.estimate_normals(
-                o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size*2, max_nn=30)
-            )
-
-            if args.version == "my_icp":
-                res_icp = my_local_icp_algorithm(cur_down, local_map, res_ransac.transformation)
-            else:
-                res_icp = local_icp_algorithm(
-                    cur_down,
-                    local_map,
-                    res_ransac.transformation,
-                    threshold=voxel_size * 0.4
-                )
-
-        T_icp = res_icp.transformation.copy()
-        angle = np.linalg.norm(R.from_matrix(T_icp[:3,:3]).as_rotvec())
-        angle_deg = np.degrees(angle)
-        print(f"Frame {i} ICP rotation (deg): {np.degrees(angle):.4f}")
-
-        print(f"Frame {i} RANSAC fitness: {res_ransac.fitness:.4f}, ICP fitness: {res_icp.fitness:.4f}")
-        print(f"Frame {i} RANSAC inlier: {res_ransac.inlier_rmse:.4f}, ICP inlier: {res_icp.inlier_rmse:.4f}")
-        
-        if res_ransac.fitness < 0.5 or res_ransac.inlier_rmse > 0.05:
-            print(f"Frame {i} RANSAC too poor, fallback to previous pose")
-            # fallback: use previous pose without updating
-            T_trans = np.eye(4)
-        else:
-            # ICP refinement
-            T_icp = res_icp.transformation.copy()
-            angle_deg = np.degrees(np.linalg.norm(R.from_matrix(T_icp[:3,:3]).as_rotvec()))
-            if angle_deg > 10 or res_icp.fitness < 0.65:
-                print(f"Frame {i} ICP failed, fallback to RANSAC")
-                T_trans = np.linalg.inv(res_ransac.transformation)
-            else:
-                T_trans = np.linalg.inv(T_icp)
+            # not implement
+            icp_result = my_local_icp_algorithm(cur_down, prev_down, trans_init)
 
         # 5. Update camera_poses and accumulate points
-        new_pose = camera_poses[-1] @ T_trans
-        camera_poses.append(new_pose)
+        T_icp = icp_result.transformation
+        T_world = camera_poses[-1] @ T_icp
+        camera_poses.append(T_world)
+        
+        pcd_cur_world = deepcopy(pcd_cur)
+        pcd_cur_world.transform(T_world)
+        accumulated_pcd += pcd_cur_world
+        '''
+        if i % 10 == 0: 
+            o3d.visualization.draw_geometries([accumulated_pcd], window_name="Frame 0 check")
+            '''
 
-        R_global = np.array(new_pose[:3, :3])
-        angle_global = np.degrees(
-            np.linalg.norm(R.from_matrix(R_global).as_rotvec())
-        )
-        print(f"Frame {i} GLOBAL rotation (deg): {angle_global:.4f}")
-
-        if res_icp.fitness > 0.7:
-            temp_pcd = deepcopy(cur_pcd)
-            temp_pcd.transform(new_pose)
-
-            recent_pcds.append(temp_pcd)
-            if len(recent_pcds) > 5:
-                recent_pcds.pop(0)
-
-            accumulated_pcd += temp_pcd
-
-            if i % 10 == 0:
-                accumulated_pcd = accumulated_pcd.voxel_down_sample(voxel_size=0.03)
-
-        prev_down, prev_fpfh = cur_down, cur_fpfh
-
-    accumulated_pcd = accumulated_pcd.voxel_down_sample(voxel_size=0.02)
-    accumulated_pcd, _ = accumulated_pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
-
-    # Post-processing: remove the ceiling
-    points = np.asarray(accumulated_pcd.points)
-    mask = points[:, 1] < np.percentile(points[:, 1], 95)
-    accumulated_pcd = accumulated_pcd.select_by_index(np.where(mask)[0])
+    # Post-processing: remove the ceiling [cite: 37]
+    accumulated_pcd = remove_ceiling_simple(accumulated_pcd, floor=1)
     
     return accumulated_pcd, camera_poses, gt_poses
 
@@ -362,3 +312,4 @@ if __name__ == '__main__':
     
     print(f"Total execution time: {time.time() - start_time:.2f}s") # 
     visualize_and_evaluate(result_pcd, pred_poses, gt_poses, args)
+
