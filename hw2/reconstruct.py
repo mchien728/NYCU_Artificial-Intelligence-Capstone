@@ -96,19 +96,11 @@ def local_icp_algorithm(source_down, target_down, trans_init, threshold):
     """
     # Use o3d.pipelines.registration.registration_icp
     # Estimation method should be TransformationEstimationPointToPlane()
-    res_coarse = o3d.pipelines.registration.registration_icp(
-        source=source_down,
-        target=target_down,
-        max_correspondence_distance=threshold * 2.0,
-        init=trans_init,
-        estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPoint(),
-        criteria=o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=35),
-    )
     res_ransac = o3d.pipelines.registration.registration_icp(
         source=source_down,
         target=target_down,
         max_correspondence_distance=threshold,
-        init=res_coarse.transformation,
+        init=trans_init,
         estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPlane(),
         criteria=o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=70),
     )
