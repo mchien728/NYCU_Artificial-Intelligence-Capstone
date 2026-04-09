@@ -70,7 +70,6 @@ def preprocess_point_cloud(pcd, voxel_size):
     )
     
     # Compute FPFH features for Global Registration
-    # radius_feature = voxel_size * 5.0
     radius_feature = voxel_size * 5.0
     pcd_fpfh = o3d.pipelines.registration.compute_fpfh_feature(
         pcd_down,
