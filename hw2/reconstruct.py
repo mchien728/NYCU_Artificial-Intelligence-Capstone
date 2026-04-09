@@ -262,7 +262,7 @@ def reconstruct(args):
                 criteria=o3d.pipelines.registration.RANSACConvergenceCriteria(40000, 500)
             )
             # Performance of RANSAC is too bad
-            if res_ransac.fitness > 0.15 and np.linalg.norm(res_ransac.transformation[:3, 3]) < 1.0:
+            if res_ransac.fitness > 0.3 and np.linalg.norm(res_ransac.transformation[:3, 3]) < 1.0:
                 trans_init = res_ransac.transformation
 
         # 4. Execute Local Registration (ICP - Task 2)
