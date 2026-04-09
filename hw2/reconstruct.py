@@ -9,7 +9,7 @@ from scipy.spatial.transform import Rotation as R
 import time
 
 # ---------- Camera Intrinsics (Resolution 512x512, FOV 90) ----------
-# These parameters are derived from the Habitat pinhole camera model [cite: 26-27].
+# These parameters are derived from the Habitat pinhole camera model.
 IMG_W, IMG_H = 512, 512
 FOV = np.deg2rad(90.0)
 FX = (IMG_W / 2.0) / np.tan(FOV / 2.0)
@@ -21,7 +21,7 @@ DEPTH_SCALE = 1000.0
 
 def depth_image_to_point_cloud(rgb_image, depth_image):
     """
-    TASK 1: Geometric Unprojection [cite: 12, 25-27]
+    TASK 1: Geometric Unprojection
     Convert depth pixels (u, v, d) into 3D world points (x, y, z).
     """
     # 1. Convert inputs to numpy arrays
@@ -59,7 +59,7 @@ def depth_image_to_point_cloud(rgb_image, depth_image):
 
 def preprocess_point_cloud(pcd, voxel_size):
     """"
-    Pre-processing: Voxelization and Normal Estimation [cite: 17, 29]
+    Pre-processing: Voxelization and Normal Estimation
     """
     pcd_down = pcd.voxel_down_sample(voxel_size)
     
@@ -92,7 +92,7 @@ def my_local_icp_algorithm(source_pcd, target_pcd, initial_transform):
     
 def local_icp_algorithm(source_down, target_down, trans_init, threshold):
     """
-    TASK 2: Open3D ICP Implementation (REQUIRED) [cite: 32]
+    TASK 2: Open3D ICP Implementation (REQUIRED)
     """
     # Use o3d.pipelines.registration.registration_icp
     # Estimation method should be TransformationEstimationPointToPlane()
@@ -128,7 +128,7 @@ def visualize_and_evaluate(reconstructed_pcd, predicted_cam_poses, gt_poses, arg
     gt_lineset.lines  = o3d.utility.Vector2iVector(gt_lines)
     gt_lineset.colors = o3d.utility.Vector3dVector([[0, 0, 0] for _ in gt_lines]) # Black
     
-    # Calculate Mean L2 Distance between predicted_cam_poses and gt_poses [cite: 38]
+    # Calculate Mean L2 Distance between predicted_cam_poses and gt_poses
     # L2 = sqrt(dx^2 + dy^2 + dz^2)
     min_len = min(len(pred_pos), len(gt_pos))
     pred_valid = pred_pos[:min_len]
@@ -163,7 +163,7 @@ def visualize_and_evaluate(reconstructed_pcd, predicted_cam_poses, gt_poses, arg
     
     return mean_l2_error
 
-def remove_ceiling_simple(accumulated_pcd, floor=1):
+def remove_ceiling(accumulated_pcd, floor=1):
     points = np.asarray(accumulated_pcd.points)
     colors = np.asarray(accumulated_pcd.colors)
 
@@ -214,7 +214,7 @@ def reconstruct(args):
         dep_prev  = np.asarray(o3d.io.read_image(depth_files[i-1]))
         rgb_cur   = np.asarray(o3d.io.read_image(rgb_files[i]))
         dep_cur   = np.asarray(o3d.io.read_image(depth_files[i]))
-        # Depth loaded as (H, W, 3), take one channel
+        # Depth loaded as (H, W, 3), take 1 channel
         if dep_prev.ndim == 3:
             dep_prev = dep_prev[:, :, 0]
         if dep_cur.ndim == 3:
@@ -223,6 +223,7 @@ def reconstruct(args):
         # 1. Convert RGB-D to PointCloud (Task 1)
         pcd_prev = depth_image_to_point_cloud(rgb_prev, dep_prev)
         pcd_cur = depth_image_to_point_cloud(rgb_cur, dep_cur)
+        
         if i == 1 and len(pcd_prev.points) > 0:
             pcd_prev_world = deepcopy(pcd_prev)
             pcd_prev_world.transform(camera_poses[0])
@@ -285,8 +286,8 @@ def reconstruct(args):
             o3d.visualization.draw_geometries([accumulated_pcd], window_name="Frame 0 check")
             '''
 
-    # Post-processing: remove the ceiling [cite: 37]
-    accumulated_pcd = remove_ceiling_simple(accumulated_pcd, floor=1)
+    # Post-processing: remove the ceiling
+    accumulated_pcd = remove_ceiling(accumulated_pcd, floor=1)
     
     return accumulated_pcd, camera_poses, gt_poses
 
