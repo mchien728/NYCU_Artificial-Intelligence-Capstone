@@ -125,7 +125,7 @@ def visualize_and_evaluate(reconstructed_pcd, predicted_cam_poses, gt_poses, arg
     gt_lineset = o3d.geometry.LineSet()
     gt_lineset.points = o3d.utility.Vector3dVector(gt_pos)
     gt_lineset.lines  = o3d.utility.Vector2iVector(gt_lines)
-    gt_lineset.colors = o3d.utility.Vector3dVector([[0, 0, 0] for _ in gt_lines]) # Black
+    gt_lineset.colors = o3d.utility.Vector3dVector([[0, 0, 0] for _ in gt_lines])
     
     # Calculate Mean L2 Distance between predicted_cam_poses and gt_poses
     # L2 = sqrt(dx^2 + dy^2 + dz^2)
@@ -134,20 +134,26 @@ def visualize_and_evaluate(reconstructed_pcd, predicted_cam_poses, gt_poses, arg
     gt_valid = gt_pos[:min_len]
 
     mean_l2_error = np.nan
+
     if min_len > 1:
-        gt_center = np.mean(gt_valid, axis=0)
-        pred_center = np.mean(pred_valid, axis=0)
-        gt_zero = gt_valid - gt_center
-        pred_zero = pred_valid - pred_center
+        gt_centroid = np.mean(gt_valid, axis=0)
+        pred_centroid = np.mean(pred_valid, axis=0)
+
+        # Convert to mean = 0
+        gt_zero = gt_valid - gt_centroid
+        pred_zero = pred_valid - pred_centroid
 
         # SVD
-        H = gt_zero.T @ pred_zero
-        U, _, Vt = np.linalg.svd(H)
+        conv_mat = gt_zero.T @ pred_zero
+        U, _, Vt = np.linalg.svd(conv_mat)
+
+        # Kabsch algo.
         R_align = Vt.T @ U.T
         if np.linalg.det(R_align) < 0:
             Vt[-1, :] *= -1
             R_align = Vt.T @ U.T
-        t_align = pred_center - R_align @ gt_center
+            
+        t_align = pred_centroid - R_align @ gt_centroid
 
         gt_pos = (R_align @ gt_pos.T).T + t_align
         gt_lineset.points = o3d.utility.Vector3dVector(gt_pos)
