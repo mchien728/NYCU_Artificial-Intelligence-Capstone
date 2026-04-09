@@ -112,28 +112,10 @@ def visualize_and_evaluate(reconstructed_pcd, predicted_cam_poses, gt_poses, arg
     # extract camera positions
     pred_pos = np.array([pose[:3, 3] for pose in predicted_cam_poses]) 
     gt_pos = np.array([pose[:3, 3] for pose in gt_poses])
-
-    # 1. Create LineSet for estimated trajectory (Red)
-    pred_lines = [[i, i+1] for i in range(len(pred_pos) - 1)]
-    pred_lineset = o3d.geometry.LineSet()
-    pred_lineset.points = o3d.utility.Vector3dVector(pred_pos)
-    pred_lineset.lines  = o3d.utility.Vector2iVector(pred_lines)
-    pred_lineset.colors = o3d.utility.Vector3dVector([[1, 0, 0] for _ in pred_lines])
     
-    # 2. Create LineSet for ground truth trajectory (Black)
-    gt_lines = [[i, i+1] for i in range(len(gt_pos) - 1)]
-    gt_lineset = o3d.geometry.LineSet()
-    gt_lineset.points = o3d.utility.Vector3dVector(gt_pos)
-    gt_lineset.lines  = o3d.utility.Vector2iVector(gt_lines)
-    gt_lineset.colors = o3d.utility.Vector3dVector([[0, 0, 0] for _ in gt_lines])
-    
-    # Calculate Mean L2 Distance between predicted_cam_poses and gt_poses
-    # L2 = sqrt(dx^2 + dy^2 + dz^2)
     min_len = min(len(pred_pos), len(gt_pos))
     pred_valid = pred_pos[:min_len]
     gt_valid = gt_pos[:min_len]
-
-    mean_l2_error = np.nan
 
     if min_len > 1:
         gt_centroid = np.mean(gt_valid, axis=0)
@@ -154,13 +136,29 @@ def visualize_and_evaluate(reconstructed_pcd, predicted_cam_poses, gt_poses, arg
             R_align = Vt.T @ U.T
             
         t_align = pred_centroid - R_align @ gt_centroid
-
         gt_pos = (R_align @ gt_pos.T).T + t_align
-        gt_lineset.points = o3d.utility.Vector3dVector(gt_pos)
 
-        l2_dis = np.linalg.norm(pred_valid - gt_valid, axis=1)
-        mean_l2_error = float(np.mean(l2_dis))
-        print(f"Mean L2 distance: {mean_l2_error:.6f} meters")
+    # 1. Create LineSet for estimated trajectory (Red)
+    pred_lines = [[i, i+1] for i in range(len(pred_pos) - 1)]
+    pred_lineset = o3d.geometry.LineSet()
+    pred_lineset.points = o3d.utility.Vector3dVector(pred_pos)
+    pred_lineset.lines  = o3d.utility.Vector2iVector(pred_lines)
+    pred_lineset.colors = o3d.utility.Vector3dVector([[1, 0, 0] for _ in pred_lines])
+        
+    # 2. Create LineSet for ground truth trajectory (Black)
+    gt_lines = [[i, i+1] for i in range(len(gt_pos) - 1)]
+    gt_lineset = o3d.geometry.LineSet()
+    gt_lineset.points = o3d.utility.Vector3dVector(gt_pos)
+    gt_lineset.lines  = o3d.utility.Vector2iVector(gt_lines)
+    gt_lineset.colors = o3d.utility.Vector3dVector([[0, 0, 0] for _ in gt_lines])
+
+    # Calculate Mean L2 Distance between predicted_cam_poses and gt_poses
+    # L2 = sqrt(dx^2 + dy^2 + dz^2)
+    mean_l2_error = np.nan
+    
+    l2_dis = np.linalg.norm(pred_valid - gt_valid, axis=1)
+    mean_l2_error = float(np.mean(l2_dis))
+    print(f"Mean L2 distance: {mean_l2_error:.6f} meters")
 
     # 3. Visualization
     o3d.visualization.draw_geometries([reconstructed_pcd, pred_lineset, gt_lineset], 
