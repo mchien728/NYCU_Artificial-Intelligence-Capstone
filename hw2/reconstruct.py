@@ -217,7 +217,7 @@ def reconstruct(args):
         dep_prev  = np.asarray(o3d.io.read_image(depth_files[i-1]))
         rgb_cur   = np.asarray(o3d.io.read_image(rgb_files[i]))
         dep_cur   = np.asarray(o3d.io.read_image(depth_files[i]))
-        # Depth loaded as (H, W, 3), take 1 channel
+        # Depth: (H, W, 3), take 1 channel
         if dep_prev.ndim == 3:
             dep_prev = dep_prev[:, :, 0]
         if dep_cur.ndim == 3:
