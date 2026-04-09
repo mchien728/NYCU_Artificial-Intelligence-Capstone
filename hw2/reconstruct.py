@@ -242,9 +242,11 @@ def reconstruct(args):
 
         # 3. Execute Global Registration (RANSAC)
         distance_threshold = coarse_voxel_size * 1.5
-        trans_init = np.eye(4)
+        # Initialize
         if len(camera_poses) >= 2:
             trans_init = np.linalg.inv(camera_poses[-2]) @ camera_poses[-1]
+        else:
+            trans_init = np.eye(4)
 
         if len(cur_global_down.points) < 50 or len(prev_global_down.points) < 50:
             res_ransac = o3d.pipelines.registration.RegistrationResult()
