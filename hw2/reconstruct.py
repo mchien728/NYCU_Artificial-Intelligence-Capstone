@@ -117,6 +117,7 @@ def visualize_and_evaluate(reconstructed_pcd, predicted_cam_poses, gt_poses, arg
     pred_valid = pred_pos[:min_len]
     gt_valid = gt_pos[:min_len]
 
+    # SVD Implementation
     if min_len > 1:
         gt_centroid = np.mean(gt_valid, axis=0)
         pred_centroid = np.mean(pred_valid, axis=0)
@@ -125,7 +126,6 @@ def visualize_and_evaluate(reconstructed_pcd, predicted_cam_poses, gt_poses, arg
         gt_zero = gt_valid - gt_centroid
         pred_zero = pred_valid - pred_centroid
 
-        # SVD
         conv_mat = gt_zero.T @ pred_zero
         U, _, Vt = np.linalg.svd(conv_mat)
 
@@ -184,7 +184,7 @@ def remove_ceiling(accumulated_pcd, floor=1):
     return filtered_pcd
 
 def reconstruct(args):
-    voxel_size = 0.1
+    voxel_size = 0.05
     rgb_dir = os.path.join(args.data_root, "rgb")
     depth_dir = os.path.join(args.data_root, "depth")
 
@@ -269,15 +269,15 @@ def reconstruct(args):
                 trans_init = ransac_result.transformation
 
         # 4. Execute Local Registration (ICP - Task 2)
-        icp_max_dis = voxel_size * 1.5
+        icp_threshold = voxel_size * 1.5
         if args.version == 'open3d':
-            icp_result = local_icp_algorithm(cur_down, prev_down, trans_init, icp_max_dis)
+            res_icp = local_icp_algorithm(cur_down, prev_down, trans_init, icp_threshold)
         else:
             # not implement
-            icp_result = my_local_icp_algorithm(cur_down, prev_down, trans_init)
+            res_icp = my_local_icp_algorithm(cur_down, prev_down, trans_init)
 
         # 5. Update camera_poses and accumulate points
-        T_icp = icp_result.transformation
+        T_icp = res_icp.transformation
         T_world = camera_poses[-1] @ T_icp
         camera_poses.append(T_world)
         
@@ -290,7 +290,7 @@ def reconstruct(args):
             '''
 
     # Post-processing: remove the ceiling
-    accumulated_pcd = remove_ceiling(accumulated_pcd, floor=1)
+    accumulated_pcd = remove_ceiling(accumulated_pcd)
     
     return accumulated_pcd, camera_poses, gt_poses
 
