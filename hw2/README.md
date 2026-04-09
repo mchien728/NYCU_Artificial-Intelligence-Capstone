@@ -41,4 +41,3 @@ If implementing the own ICP algorithm, use the my_icp option.
 # Run reconstruction with your own ICP
 python reconstruct.py -f 1 -v my_icp
 ```
-```
