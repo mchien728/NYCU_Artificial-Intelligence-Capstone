@@ -25,7 +25,7 @@ Use the Habitat environment to collect RGB-D images and ground truth poses.
 python load.py
 ```
 
-##Phase 2: 3D Reconstruction
+## Phase 2: 3D Reconstruction
 Switch to the reconstruction environment before running the following commands.
 ⚠️ Requirements:
 open3d
