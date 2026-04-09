@@ -227,11 +227,6 @@ def reconstruct(args):
         pcd_prev = depth_image_to_point_cloud(rgb_prev, dep_prev)
         pcd_cur = depth_image_to_point_cloud(rgb_cur, dep_cur)
 
-        if i == 1 and len(pcd_prev.points) > 0:
-            pcd_prev_world = deepcopy(pcd_prev)
-            pcd_prev_world.transform(camera_poses[0])
-            accumulated_pcd += pcd_prev_world
-
         # 2. Preprocess (Voxel/FPFH/Normals)
         prev_down, _ = preprocess_point_cloud(pcd_prev, voxel_size)
         cur_down, _ = preprocess_point_cloud(pcd_cur, voxel_size)
@@ -282,6 +277,11 @@ def reconstruct(args):
         T_icp = res_icp.transformation
         T_world = camera_poses[-1] @ T_icp
         camera_poses.append(T_world)
+
+        if i == 1 and len(pcd_prev.points) > 0:
+            pcd_prev_world = deepcopy(pcd_prev)
+            pcd_prev_world.transform(camera_poses[0])
+            accumulated_pcd += pcd_prev_world
         
         pcd_cur_world = deepcopy(pcd_cur)
         pcd_cur_world.transform(T_world)
