@@ -95,7 +95,7 @@ def local_icp_algorithm(source_down, target_down, trans_init, threshold):
     """
     # Use o3d.pipelines.registration.registration_icp
     # Estimation method should be TransformationEstimationPointToPlane()
-    res_ransac = o3d.pipelines.registration.registration_icp(
+    res_icp = o3d.pipelines.registration.registration_icp(
         source=source_down,
         target=target_down,
         max_correspondence_distance=threshold,
@@ -103,7 +103,7 @@ def local_icp_algorithm(source_down, target_down, trans_init, threshold):
         estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPlane(),
         criteria=o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=70),
     )
-    return res_ransac
+    return res_icp
 
 def visualize_and_evaluate(reconstructed_pcd, predicted_cam_poses, gt_poses, args):
     """
@@ -251,7 +251,7 @@ def reconstruct(args):
             res_ransac.transformation = np.eye(4)
             res_ransac.fitness = 0.0
         else:    
-            ransac_result = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
+            res_ransac = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
                 cur_global_down, prev_global_down,
                 cur_global_fpfh, prev_global_fpfh,
                 mutual_filter=False,
@@ -265,8 +265,8 @@ def reconstruct(args):
                 criteria=o3d.pipelines.registration.RANSACConvergenceCriteria(40000, 500)
             )
             # Performance of RANSAC is too bad
-            if ransac_result.fitness > 0.15 and np.linalg.norm(ransac_result.transformation[:3, 3]) < 1.0:
-                trans_init = ransac_result.transformation
+            if res_ransac.fitness > 0.15 and np.linalg.norm(res_ransac.transformation[:3, 3]) < 1.0:
+                trans_init = res_ransac.transformation
 
         # 4. Execute Local Registration (ICP - Task 2)
         icp_threshold = voxel_size * 1.5
