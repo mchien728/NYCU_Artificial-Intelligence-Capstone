@@ -52,7 +52,13 @@ def main():
 
     print("=== Step 1: Processing the 3D Map ===")
     # =============== TODO 1-2 ===============
-    # map_img, occupancy_map, ... = load_and_filter_map(POINT_CLOUD_DATA, COLOR_DATA)
+    map_img, occupancy_map, origin_world, resolution = load_and_filter_map(
+        POINT_CLOUD_DATA,
+        COLOR_DATA,
+    )
+    print(f"Map size: {map_img.shape[1]} x {map_img.shape[0]} pixels")
+    print(f"World origin (x, z): {origin_world}")
+    print(f"Map resolution: {resolution:.3f} meters/pixel")
 
 
     print("=== Step 2: Selecting Agent Start and Goal Positions ===")
