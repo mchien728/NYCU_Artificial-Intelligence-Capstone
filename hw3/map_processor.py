@@ -24,7 +24,7 @@ def load_and_filter_map(point_path: str, color_path: str):
 
     # To get a good 2d map, filter ceiling/floor, project to 2D
     # Floor is not obstable, the map shouldn't contain it
-    valid_mask = ~np.all(np.isclose(colors, CEILING_COLOR), axis=1)
+    valid_mask = ~np.all(np.isclose(colors, CEILING_COLOR), axis=1) # Check along column
     valid_mask &= ~np.all(np.isclose(colors, FLOOR_COLOR), axis=1)
 
     coords_filtered = coords[valid_mask]
