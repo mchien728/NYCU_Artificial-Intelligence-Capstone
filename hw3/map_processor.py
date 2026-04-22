@@ -5,23 +5,72 @@ from typing import List, Tuple
 SCALE_FACTOR = 10000.0 / 255.0
 CEILING_COLOR = np.array([8, 255, 214])
 FLOOR_COLOR = np.array([255, 194, 7])
+MAP_RESOLUTION = 0.05
+POINT_RADIUS_PX = 1
+ROBOT_RADIUS_PX = 4
+MIN_COMPONENT_AREA = 20
 
 
 def load_and_filter_map(point_path: str, color_path: str):
-
     points = np.load(point_path)
     colors = np.load(color_path)
 
     # Convert to real-world meters
     coords = points * SCALE_FACTOR
 
-    # =============== TODO 1-1 ===============
-    # Hints: To get a good 2d map, filter ceiling/floor, project to 2D,
-    # remove isolated points, inflate obstacles to get occupancy map, etc.
+    # =============== 1-1 ===============
     # IMPORTANT: return map_img as float in value range [0, 1] for visualization downstream.
     # NOTE: in habitat sim, x z plane corresponds to world horizontal plane, and y is vertical.
 
-    # return map_img, occupancy_map, ...
+    # To get a good 2d map, filter ceiling/floor, project to 2D
+    # Floor is not obstable, the map shouldn't contain it
+    valid_mask = ~np.all(np.isclose(colors, CEILING_COLOR), axis=1)
+    valid_mask &= ~np.all(np.isclose(colors, FLOOR_COLOR), axis=1)
+
+    coords_filtered = coords[valid_mask]
+    colors_filtered = colors[valid_mask].astype(np.uint8)
+
+    # [:, [0, 2]]: get all rows and get the first and third columns
+    xz = coords_filtered[:, [0, 2]]
+    x_min, z_min = xz.min(axis=0)
+    x_max, z_max = xz.max(axis=0)
+
+    width = int(np.ceil((x_max - x_min) / MAP_RESOLUTION)) + 1
+    height = int(np.ceil((z_max - z_min) / MAP_RESOLUTION)) + 1
+
+    x_pixel = np.round((xz[:, 0] - x_min) / MAP_RESOLUTION).astype(np.int32)
+    y_pixel = np.round((xz[:, 1] - z_min) / MAP_RESOLUTION).astype(np.int32)
+
+    x_pixel = np.clip(x_pixel, 0, width - 1)
+    y_pixel = np.clip(y_pixel, 0, height - 1)
+
+    # remove isolated points, inflate obstacles to get occupancy map, etc.
+    map_img = np.ones((height, width, 3), dtype=np.uint8) * 255
+    obs_mask = np.zeros((height, width), dtype=np.uint8)
+
+    for x, y, color in zip(x_pixel, y_pixel, colors_filtered):
+        cv2.circle(map_img, (x, y), POINT_RADIUS_PX, color.tolist(), -1)
+        cv2.circle(obs_mask, (x, y), POINT_RADIUS_PX, 255, -1)
+
+    # Group the obstacles
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(obs_mask, connectivity=8)
+    obs_cleaned = np.zeros_like(obs_mask)
+    for label_idx in range(1, num_labels):
+        area = stats[label_idx, cv2.CC_STAT_AREA]
+        if area >= MIN_COMPONENT_AREA:
+            obs_cleaned[labels == label_idx] = 255
+
+    # reserve safe distance
+    inflate_kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE,
+        (2 * ROBOT_RADIUS_PX + 1, 2 * ROBOT_RADIUS_PX + 1),
+    )
+    obs_inflated = cv2.dilate(obs_cleaned, inflate_kernel, iterations=1)
+
+    occupancy_map = (obs_inflated > 0).astype(np.uint8)
+    origin_world = (float(x_min), float(z_min))
+
+    return map_img.astype(np.float32) / 255.0, occupancy_map, origin_world, MAP_RESOLUTION
 
 
 def select_start(map_img: np.ndarray) -> Tuple[int, int]:
