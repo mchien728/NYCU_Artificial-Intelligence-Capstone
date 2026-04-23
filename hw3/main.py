@@ -16,16 +16,21 @@ COLOR_DATA = "semantic_3d_pointcloud/color0255.npy"
 # Check hw0/replica_v1/apartment_0/habitat/info_semantic.json and 
 # hw3/color_coding_semantic_segmentation_classes.xlsx for the full list of 
 # categories and their corresponding colors and indices.
+# Check json to see correct id
 SEMANTIC_DICTS = {
     "colors": {
         "rack": [[0, 255, 133]],
         "cooktop": [[7, 255, 224]],
         "sofa": [[10, 0, 255]],
+        "cushion": [[255, 9, 92]],
+        "stair": [[173, 255, 0]],
     },
     "indices": {
         "rack": 8,
         "cooktop": 280,
         "sofa": 196,
+        "cushion": 430,
+        "stair": 192,
     },
 }
 
@@ -51,6 +56,7 @@ def get_random_sample(goal, occupancy_map, goal_bias=0.1):
 
 
 def nearest_node(nodes, sample):
+    # node in nodes must be free, so don't need to check
     sx, sy = sample
     best_node = None
     min_dist = float("inf")
