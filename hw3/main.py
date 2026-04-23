@@ -226,8 +226,6 @@ def main():
     goal_prompt, goal = pick_goal(map_img)
     print(f"Goal pixel selected at coordinates: {goal}")
 
-    print("Start is free: ", is_free(start, occupancy_map))
-    print("Goal is free: ", is_free(goal, occupancy_map))
 
     print("=== Step 3: Executing Path Planning (RRT) ===")
     # =============== 2 ===============
