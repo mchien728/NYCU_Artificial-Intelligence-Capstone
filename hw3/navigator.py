@@ -57,6 +57,7 @@ def init_sim(scene_path: str = SCENE_PATH, start_x: float = 0.9, start_z: float 
     # Global Config
     sim_cfg = habitat_sim.SimulatorConfiguration()
     sim_cfg.scene_id = sim_settings["scene"]
+    sim_cfg.gpu_device_id = -1
 
     # Agent Config
     agent_cfg = habitat_sim.agent.AgentConfiguration()
