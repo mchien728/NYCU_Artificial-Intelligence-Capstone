@@ -146,7 +146,6 @@ def plan_path(start, goal, occupancy_map, iter=5000, step_size=10, goal_threshol
             parents[goal] = new_node
             return reconstruct_path(parents, new_node), explored_edges
         
-    print("It is not close.")
     return None, explored_edges
             
 
