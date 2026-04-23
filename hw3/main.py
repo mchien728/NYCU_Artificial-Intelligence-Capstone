@@ -1,6 +1,9 @@
 import random
 import sys
 from typing import List, Tuple
+import math
+import numpy as np
+import cv2
 
 from map_processor import load_and_filter_map, select_start, get_goal_pixels
 from navigator import init_sim, execute_waypoint_path
@@ -26,6 +29,126 @@ SEMANTIC_DICTS = {
     },
 }
 
+def is_free(point, occupancy_map):
+    px, py = point
+    h, w = occupancy_map.shape
+    if px < 0 or py < 0 or px >= w or py >= h:
+        return False
+    
+    return occupancy_map[py, px] == 0
+
+
+def get_random_sample(goal, occupancy_map, goal_bias=0.1):
+    h, w = occupancy_map.shape
+    if random.random() < goal_bias:
+        return goal
+    
+    while True:
+        x = random.randint(0, w - 1)
+        y = random.randint(0, h - 1)
+        if is_free((x, y), occupancy_map):
+            return (x, y)
+
+
+def nearest_node(nodes, sample):
+    sx, sy = sample
+    best_node = None
+    min_dist = float("inf")
+
+    for node in nodes:
+        nx, ny = node
+        dist = math.sqrt((sx - nx) ** 2 + (sy - ny) ** 2)
+        if dist < min_dist:
+            min_dist = dist
+            best_node = node
+
+    return best_node
+
+
+def steer(from_node, to_node, occupancy_map, step_size=10):
+    px_from, py_from = from_node
+    px_to, py_to = to_node
+
+    px_dist = px_to - px_from
+    py_dist = py_to - py_from
+    dist = math.sqrt(px_dist * px_dist + py_dist * py_dist)
+
+    if dist == 0:
+        return from_node
+    
+    max_step = min(step_size, dist)
+    for step in range(int(max_step), 0, -1):
+        scale = step / dist
+        px_new = px_from + px_dist * scale
+        py_new = py_from + py_dist * scale
+
+        new_node = (int(round(px_new)), int(round(py_new)))
+        if is_free(new_node, occupancy_map):
+            return new_node
+        
+    return from_node
+
+
+def is_path_collision(from_node, to_node, occupancy_map):
+    px_from, py_from = from_node
+    px_to, py_to = to_node
+
+    steps = max(abs(px_to - px_from), abs(py_to - py_from))
+    if steps == 0:
+        return is_free(from_node, occupancy_map)
+    
+    for i in range(1, steps):
+        t = i / steps
+        px_test = int(round(px_from + (px_to - px_from) * t))
+        py_test = int(round(py_from + (py_to - py_from) * t))
+
+        if not is_free((px_test, py_test), occupancy_map):
+            return True
+        
+    return False
+
+
+def reconstruct_path(parents, goal):
+    path = []
+    cur = goal
+
+    while cur is not None:
+        path.append(cur)
+        cur = parents[cur]
+
+    path.reverse()
+    return path
+
+
+def plan_path(start, goal, occupancy_map, iter=5000, step_size=10, goal_threshold=20):
+    if not is_free(start, occupancy_map):
+        return None, []
+    
+    nodes = [start]
+    parents = {start: None}
+    explored_edges = []
+    for _ in range(iter):
+        sample = get_random_sample(goal, occupancy_map)
+        nearest = nearest_node(nodes, sample)
+        new_node = steer(nearest, sample, occupancy_map, step_size)
+
+        if is_path_collision(nearest, new_node, occupancy_map):
+            continue
+        if new_node in parents:
+            continue
+
+        nodes.append(new_node)
+        parents[new_node] = nearest
+        explored_edges.append((nearest, new_node))
+
+        dist_to_goal = math.sqrt((new_node[0] - goal[0]) ** 2 + (new_node[1] - goal[1]) ** 2)
+        if dist_to_goal <= goal_threshold:
+            parents[goal] = new_node
+            return reconstruct_path(parents, new_node), explored_edges
+        
+    print("It is not close.")
+    return None, explored_edges
+            
 
 def pick_goal(map_img) -> Tuple[str, Tuple[int, int]]:
     prompt = "Enter semantic destination (ex: 'rack', 'cooktop', 'sofa'): "
@@ -47,11 +170,44 @@ def run_in_sim(start_world: Tuple[float, float], world_path: List[Tuple[float, f
     execute_waypoint_path(world_path, sim, agent, SEMANTIC_DICTS["indices"][goal_prompt])
 
 
+def visualize_path(map_img, path, explored_edges, start, goal):
+    vis_img = (map_img * 255).astype(np.uint8).copy()
+
+    for point_prev, point_cur in explored_edges:
+        cv2.line(vis_img, point_prev, point_cur, (0, 0, 0), 1)
+
+    for i in range(1, len(path)):
+        point_prev = path[i-1]
+        point_cur = path[i]
+        cv2.line(vis_img, point_prev, point_cur, (0, 0, 255), 2)
+
+    for point in path:
+        cv2.circle(vis_img, point, 2, (0, 255, 255), -1)
+
+    cv2.circle(vis_img, start, 5, (0, 255, 0), -1)
+    cv2.circle(vis_img, goal, 5, (255, 0, 0), -1)
+
+    cv2.imshow("Planned Path", vis_img)
+    cv2.waitKey(5000)
+    cv2.destroyAllWindows()
+
+
+def pixel_to_world(path, origin_world, resolution):
+    world_path = []
+
+    for px, py in path:
+        x_world = origin_world[0] + px * resolution
+        z_world = origin_world[1] + py * resolution
+        world_path.append((x_world, z_world))
+
+    return world_path
+
+
 def main():
     """Entry point."""
 
     print("=== Step 1: Processing the 3D Map ===")
-    # =============== TODO 1-2 ===============
+    # =============== 1-2 ===============
     map_img, occupancy_map, origin_world, resolution = load_and_filter_map(
         POINT_CLOUD_DATA,
         COLOR_DATA,
@@ -60,36 +216,45 @@ def main():
     print(f"World origin (x, z): {origin_world}")
     print(f"Map resolution: {resolution:.3f} meters/pixel")
 
+    #cv2.imshow("occupancy_map", (occupancy_map * 255).astype(np.uint8))
+    #cv2.waitKey(0)
+    #cv2.destroyAllWindows()
+
 
     print("=== Step 2: Selecting Agent Start and Goal Positions ===")
     start = select_start(map_img)
     goal_prompt, goal = pick_goal(map_img)
     print(f"Goal pixel selected at coordinates: {goal}")
 
+    print("Start is free: ", is_free(start, occupancy_map))
+    print("Goal is free: ", is_free(goal, occupancy_map))
 
     print("=== Step 3: Executing Path Planning (RRT) ===")
-    # =============== TODO 2 ===============
+    # =============== 2 ===============
     # implement RRT path planner in plan_path()
-
-    # path = plan_path(start, goal, occupancy_map)
-    # if not path:
-    #     print("Planner could not find a path.")
-    #     sys.exit(1)
+    path, explored_edges = plan_path(start, goal, occupancy_map)
+    if not path:
+        print("Planner could not find a path.")
+        sys.exit(1)
 
 
     print("=== Step 4: Visualizing the Planned Path ===")
-    # =============== TODO 3 ===============
+    # =============== 3 ===============
     # Visualize the planned path over the map
-
-    # visualize_path(...)
+    visualize_path(map_img, path, explored_edges, start, goal)
 
 
     print("=== Step 5: Translating Path to Habitat Simulator ===")
-    # =============== TODO 4 ===============
+    # =============== 4 ===============
     # Convert pixel path to world coordinates
     # world_path is a list of tuples(float, float) representing waypoints in world coordinates
+    world_path = pixel_to_world(path, origin_world, resolution)
 
-    # world_path = ... 
+    print("Pixel path first point:", path[0])
+    print("World path first point:", world_path[0])
+    print("Pixel path last point:", path[-1])
+    print("World path last point:", world_path[-1])
+
 
     run_in_sim(world_path[0], world_path, goal_prompt)
 
