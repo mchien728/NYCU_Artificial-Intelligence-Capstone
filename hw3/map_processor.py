@@ -7,8 +7,10 @@ CEILING_COLOR = np.array([8, 255, 214])
 FLOOR_COLOR = np.array([255, 194, 7])
 MAP_RESOLUTION = 0.05
 POINT_RADIUS_PX = 1
-ROBOT_RADIUS_PX = 4
+ROBOT_RADIUS_PX = 1
 MIN_COMPONENT_AREA = 20
+MIN_OBSTACLE_HEIGHT = 0.10
+MAX_OBSTACLE_HEIGHT = 1.50
 
 
 def load_and_filter_map(point_path: str, color_path: str):
@@ -24,8 +26,9 @@ def load_and_filter_map(point_path: str, color_path: str):
 
     # To get a good 2d map, filter ceiling/floor, project to 2D
     # Floor is not obstable, the map shouldn't contain it
-    valid_mask = ~np.all(np.isclose(colors, CEILING_COLOR), axis=1) # Check along column
-    valid_mask &= ~np.all(np.isclose(colors, FLOOR_COLOR), axis=1)
+    ceiling_mask = np.all(np.isclose(colors, CEILING_COLOR), axis=1)
+    floor_mask = np.all(np.isclose(colors, FLOOR_COLOR), axis=1)
+    valid_mask = ~ceiling_mask & ~floor_mask
 
     coords_filtered = coords[valid_mask]
     colors_filtered = colors[valid_mask].astype(np.uint8)
@@ -46,11 +49,29 @@ def load_and_filter_map(point_path: str, color_path: str):
 
     # remove isolated points, inflate obstacles to get occupancy map, etc.
     map_img = np.ones((height, width, 3), dtype=np.uint8) * 255
-    obs_mask = np.zeros((height, width), dtype=np.uint8)
 
     for x, y, color in zip(x_pixel, y_pixel, colors_filtered):
         cv2.circle(map_img, (x, y), POINT_RADIUS_PX, color.tolist(), -1)
-        cv2.circle(obs_mask, (x, y), POINT_RADIUS_PX, 255, -1)
+
+    # Build the obstacle map from points that live near the floor plane.
+    # Projecting every non-floor 3D point to 2D tends to seal narrow corridors.
+    floor_y = float(np.median(coords[floor_mask, 1])) if np.any(floor_mask) else float(np.min(coords[:, 1]))
+    obstacle_mask = valid_mask.copy()
+    obstacle_mask &= coords[:, 1] >= floor_y + MIN_OBSTACLE_HEIGHT
+    obstacle_mask &= coords[:, 1] <= floor_y + MAX_OBSTACLE_HEIGHT
+
+    obstacle_coords = coords[obstacle_mask]
+    if obstacle_coords.size > 0:
+        obstacle_xz = obstacle_coords[:, [0, 2]]
+        obs_x = np.round((obstacle_xz[:, 0] - x_min) / MAP_RESOLUTION).astype(np.int32)
+        obs_y = np.round((obstacle_xz[:, 1] - z_min) / MAP_RESOLUTION).astype(np.int32)
+
+        obs_x = np.clip(obs_x, 0, width - 1)
+        obs_y = np.clip(obs_y, 0, height - 1)
+
+        obs_mask = np.zeros((height, width), dtype=np.uint8)
+        for x, y in zip(obs_x, obs_y):
+            cv2.circle(obs_mask, (x, y), POINT_RADIUS_PX, 255, -1)
 
     # Group the obstacles
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(obs_mask, connectivity=8)
