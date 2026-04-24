@@ -187,10 +187,10 @@ def visualize_path(map_img, path, explored_edges, start, goal):
         cv2.line(vis_img, point_prev, point_cur, (0, 0, 255), 2)
 
     for point in path:
-        cv2.circle(vis_img, point, 2, (0, 255, 255), -1)
+        cv2.circle(vis_img, point, 1, (255, 0, 255), -1)
 
     cv2.circle(vis_img, start, 5, (0, 255, 0), -1)
-    cv2.circle(vis_img, goal, 5, (255, 0, 0), -1)
+    cv2.circle(vis_img, goal, 5, (255, 255, 0), -1)
 
     cv2.imshow("Planned Path", vis_img)
     cv2.waitKey(5000)
