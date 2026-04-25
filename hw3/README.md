@@ -11,7 +11,7 @@ The replica dataset, you can use the same one in `hw0`.
 Run the code in conda environment `habitat`
 
 ## Basic Version: Original RRT
-Enter conda environment `habitat`. After setting the parameter `adaptive` to `False` in `main.py`, run `main.py`
+Enter folder `hw3\src` and conda environment `habitat`. After setting the parameter `adaptive` to `False` in `main.py`, run `main.py`
 ```bash
 conda activate habitat
 python main.py
