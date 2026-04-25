@@ -20,7 +20,7 @@ python main.py
 Choose one point on the image shown on the screen to be the start point, then the program will execute path planning and use this path to do robot navigation.
 
 ## Advanced Version: Adaptive goal-bias RRT
-Enter conda environment `habitat`. After setting the parameter `adaptive` to `True` in `main.py`, run `main.py`
+Enter folder `hw3\src` and conda environment `habitat`. After setting the parameter `adaptive` to `True` in `main.py`, run `main.py`
 ```bash
 conda activate habitat
 python main.py
