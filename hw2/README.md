@@ -1,6 +1,6 @@
 # AI Capstone HW2
 
-NYCU AI Capstone HW2
+NYCU AI CAPSTONE 2026 Spring
 
 Spec: [Google Docx](https://drive.google.com/file/d/1aOYWcycS2J2hnm5BWxa438pOT0doBfcP/view?usp=sharing)
 
