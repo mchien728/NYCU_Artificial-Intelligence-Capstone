@@ -144,6 +144,7 @@ def plan_path(
     goal_threshold=20,
     min_goal_bias=0.1,
     max_goal_bias=0.35,
+    adaptive=True
 ):
     if not is_free(start, occupancy_map):
         return None, []
@@ -152,7 +153,9 @@ def plan_path(
     parents = {start: None}
     explored_edges = []
     for i in range(iter):
-        goal_bias = get_adaptive_goal_bias(i, iter, min_goal_bias, max_goal_bias)
+        if adaptive is True:
+            goal_bias = get_adaptive_goal_bias(i, iter, min_goal_bias, max_goal_bias)
+
         sample = get_random_sample(goal, occupancy_map, goal_bias=goal_bias)
         nearest = nearest_node(nodes, sample)
         new_node = steer(nearest, sample, occupancy_map, step_size)
@@ -272,12 +275,6 @@ def main():
     # Convert pixel path to world coordinates
     # world_path is a list of tuples(float, float) representing waypoints in world coordinates
     world_path = pixel_to_world(path, origin_world, resolution)
-
-    print("Pixel path first point:", path[0])
-    print("World path first point:", world_path[0])
-    print("Pixel path last point:", path[-1])
-    print("World path last point:", world_path[-1])
-
 
     run_in_sim(world_path[0], world_path, goal_prompt)
 
