@@ -55,6 +55,14 @@ def get_random_sample(goal, occupancy_map, goal_bias=0.1):
             return (x, y)
 
 
+def get_adaptive_goal_bias(iter_idx, max_iter, min_bias=0.05, max_bias=0.3):
+    # Bonus: Increase goal bias over time to early exploration, late goal-directed sampling.
+    if max_iter <= 1:
+        return max_bias
+    progress = iter_idx / (max_iter - 1)
+    return min_bias + (max_bias - min_bias) * progress
+
+
 def nearest_node(nodes, sample):
     # node in nodes must be free, so don't need to check
     sx, sy = sample
@@ -126,15 +134,25 @@ def reconstruct_path(parents, goal):
     return path
 
 
-def plan_path(start, goal, occupancy_map, iter=5000, step_size=10, goal_threshold=20):
+def plan_path(
+    start,
+    goal,
+    occupancy_map,
+    iter=5000,
+    step_size=10,
+    goal_threshold=20,
+    min_goal_bias=0.1,
+    max_goal_bias=0.35,
+):
     if not is_free(start, occupancy_map):
         return None, []
     
     nodes = [start]
     parents = {start: None}
     explored_edges = []
-    for _ in range(iter):
-        sample = get_random_sample(goal, occupancy_map)
+    for i in range(iter):
+        goal_bias = get_adaptive_goal_bias(i, iter, min_goal_bias, max_goal_bias)
+        sample = get_random_sample(goal, occupancy_map, goal_bias=goal_bias)
         nearest = nearest_node(nodes, sample)
         new_node = steer(nearest, sample, occupancy_map, step_size)
 
@@ -192,6 +210,7 @@ def visualize_path(map_img, path, explored_edges, start, goal):
     cv2.circle(vis_img, start, 5, (0, 255, 0), -1)
     cv2.circle(vis_img, goal, 5, (255, 255, 0), -1)
 
+    cv2.imwrite("Planned Path.png", vis_img)
     cv2.imshow("Planned Path", vis_img)
     cv2.waitKey(5000)
     cv2.destroyAllWindows()
