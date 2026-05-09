@@ -122,7 +122,6 @@ def your_ik(new_pose : list or tuple or np.ndarray,
     base_pos = np.asarray(base_pos if base_pos is not None else [0.0, 0.0, 0.0], dtype=np.float64)
         
     # -------------------------------------------------------------------------------- #
-    # --- TODO: Read the task description                                          --- #
     # --- Task 2 : Compute Inverse-Kinematic Solver of the robot by yourself.      --- #
     # ---          Try to implement `your_ik` without simulator IK APIs           --- #
     # ---          API. (40% for accuracy)                                         --- #
