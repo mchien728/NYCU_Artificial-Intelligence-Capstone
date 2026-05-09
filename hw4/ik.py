@@ -130,10 +130,37 @@ def your_ik(new_pose : list or tuple or np.ndarray,
     # -------------------------------------------------------------------------------- #
     
     #### your code ####
+    dh_params = get_ur5_DH_params()
+    alpha = 0.2
 
-    # TODO: update tmp_q using an iterative optimization loop.
-    # tmp_q = ? # may be more than one line
-    
+    # [x, y, z, q_x, q_y, q_z, q_w]
+    target_pose = np.asarray(new_pose, dtype=np.float64)
+    target_pos = target_pose[:3]
+    target_quat = target_pose[3:]
+
+    for _ in range(max_iters):
+        curr_pose, J = your_fk(dh_params, tmp_q, base_pos)
+        curr_pos = curr_pose[:3]
+        curr_quat = curr_pose[3:]
+
+        err_pos = target_pos - curr_pos
+
+        R_target = R.from_quat(target_quat)
+        R_curr = R.from_quat(curr_quat)
+
+        # From current -> target
+        R_err = R_target * R_curr.inv()
+        err_rot = R_err.as_rotvec()
+
+        error = np.concatenate([err_pos, err_rot])
+        if np.linalg.norm(error) < stop_thresh:
+            break
+
+        delta_q = pinv(J) @ error
+        tmp_q = tmp_q + alpha * delta_q
+        tmp_q = np.clip(tmp_q, joint_limits[:, 0], joint_limits[:, 1])
+
+    # update tmp_q using an iterative optimization loop.
     # hint : 
     # 1. You may use `your_fk` function and jacobian matrix to do this
     # 2. Be careful when computing the delta x

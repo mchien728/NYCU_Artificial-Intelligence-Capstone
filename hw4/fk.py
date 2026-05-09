@@ -251,19 +251,51 @@ def your_fk(DH_params : dict, q, base_pos) -> np.ndarray:
     jacobian = np.zeros((6, 6)) # a 6x6 matrix, type should be np.ndarray
 
     # -------------------------------------------------------------------------------- #
-    # --- TODO: Read the task description                                          --- #
     # --- Task 1 : Compute Forward-Kinematic and Jacobain of the robot by yourself --- #
     # ---          Try to implement `your_fk` function without using any pybullet  --- #
     # ---          API. (20% for accuracy)                                         --- #
     # -------------------------------------------------------------------------------- #
     
-    #### your code ####
+    T = A.copy()
+
+    z_axes = []
+    origins = []
+
+    for i in range(6):
+        z_axes.append(T[:3, 2].copy())
+        origins.append(T[:3, 3].copy())
+
+        a = DH_params[i]['a']
+        d = DH_params[i]['d']
+        alpha = DH_params[i]['alpha']
+        theta = q[i]
+
+        ct, st = np.cos(theta), np.sin(theta)
+        ca, sa = np.cos(alpha), np.sin(alpha)
+
+        # R(theta): z-axis, R(alpha): x-axis
+        A_i = np.array([
+            [ct, -st * ca,  st * sa, a * ct],
+            [st,  ct * ca, -ct * sa, a * st],
+            [0.0,      sa,       ca,      d],
+            [0.0,     0.0,      0.0,    1.0],
+        ], dtype=np.float64)
+
+        T = T @ A_i
     
+    p_end = T[:3, 3].copy()
 
-    # A = ? # may be more than one line
-    # jacobian = ? # may be more than one line
+    for i in range(6):
+        z_i = z_axes[i]
+        p_i = origins[i]
 
-    raise NotImplementedError
+        # Jacobian: the twist generated on the end
+        # when the i-th axis rotates with 1 rad/s
+        # v = omega x r, and omega = z_i
+        jacobian[:3, i] = cross(z_i, p_end - p_i)
+        jacobian[3:, i] = z_i
+
+    A = T
     # hint : 
     # https://automaticaddison.com/the-ultimate-guide-to-jacobian-matrices-for-robotics/
     
